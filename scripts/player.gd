@@ -19,6 +19,23 @@ var slider_timer_max = 1.0
 var slide_vector = Vector2.ZERO
 var slide_speed = 10.0
 
+# Head bobbings variables
+var head_bobbing_sprinting_speed = 22.0
+var head_bobbing_walking_speed = 15.0
+var head_bobbing_crouching_speed = 10.0
+
+var head_bobbing_sprinting_intensity = 0.2
+var head_bobbing_walking_intensity = 0.1
+var head_bobbing_crouching_intensity = 0.05
+
+var head_bobbing_vector = Vector2.ZERO
+var head_bobbing_index = 0.0
+var head_bobbing_current_intensity = 0.0
+
+
+
+
+
  
 
 
@@ -38,10 +55,11 @@ var direction = Vector3.ZERO
 # Nodes variables
 @onready var head = $neck/head
 @onready var neck = $neck
+@onready var eyes = $neck/head/eyes
 @onready var standing_collision_shape = $standing_collision_shape
 @onready var crouching_collision_shape = $crouching_collision_shape
 @onready var ray_cast_3d = $RayCast3D
-@onready var camera_3d = $neck/head/Camera3D
+@onready var camera_3d = $neck/head/eyes/Camera3D
 
 
 
@@ -84,6 +102,7 @@ func _physics_process(delta):
 	
 	
 	# Crouching
+	
 	# or couching and sliding
 	if Input.is_action_pressed("crouch") || sliding:
 		current_speed = crouching_speed
@@ -141,9 +160,12 @@ func _physics_process(delta):
 	if Input.is_action_pressed("free_look") || sliding:
 		
 		free_looking = true
-		
-		#adding camera tilt
-		camera_3d.rotation.z = deg_to_rad(neck.rotation.y * free_look_tilt_amount)
+		if sliding:
+			#adding camera tilt when sliding
+			camera_3d.rotation.z = lerp(camera_3d.rotation.z,deg_to_rad(7),delta*lerp_speed)
+		else:
+			#adding camera tilt when free looking
+			camera_3d.rotation.z = deg_to_rad(neck.rotation.y * free_look_tilt_amount)
 	else:
 		free_looking = false
 		#intialise the neck default position after looking around
@@ -162,7 +184,36 @@ func _physics_process(delta):
 			sliding = false
 			free_looking = false
 			print("Slide end.") 
+			
 	
+	# Handle headbobbing
+	
+	if sprinting:
+		head_bobbing_current_intensity = head_bobbing_sprinting_intensity
+		head_bobbing_index += head_bobbing_sprinting_speed * delta
+	elif walking:
+		head_bobbing_current_intensity = head_bobbing_walking_intensity
+		head_bobbing_index += head_bobbing_walking_speed * delta
+	elif crouching:
+		head_bobbing_current_intensity = head_bobbing_crouching_intensity
+		head_bobbing_index += head_bobbing_crouching_speed * delta
+	
+	#headbobbing when on the floor, not sliding and not on idle state
+	if is_on_floor() && !sliding && input_dir != Vector2.ZERO :
+		head_bobbing_vector.y = sin(head_bobbing_index)
+		head_bobbing_vector.x = sin(head_bobbing_index/2) +0.5 #divided by 2 to make the bobbing from side to side
+		
+		eyes.position.y = lerp(eyes.position.y,head_bobbing_vector.y * (head_bobbing_current_intensity/2.0),delta*lerp_speed)
+		eyes.position.x = lerp(eyes.position.x,head_bobbing_vector.x * head_bobbing_current_intensity,delta*lerp_speed)
+	else :
+		#eyes initial state when no headbobbings
+		eyes.position.y = lerp(eyes.position.y,0.0,delta*lerp_speed)
+		eyes.position.x = lerp(eyes.position.x,0.0,delta*lerp_speed)
+		
+		
+		
+	
+
 	
 	
 	
@@ -186,7 +237,7 @@ func _physics_process(delta):
 	#lerp needed for smooth movement
 	direction = lerp(direction,(transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized(),delta * lerp_speed)
 	
-	# Sliding direction (*)
+	# Sliding direction
 	if sliding:
 		direction = (transform.basis *  Vector3(slide_vector.x,0,slide_vector.y)).normalized()
 	

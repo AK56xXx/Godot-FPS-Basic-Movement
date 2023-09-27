@@ -60,6 +60,7 @@ var direction = Vector3.ZERO
 @onready var crouching_collision_shape = $crouching_collision_shape
 @onready var ray_cast_3d = $RayCast3D
 @onready var camera_3d = $neck/head/eyes/Camera3D
+@onready var camera_third_person = $CameraThirdPerson
 
 
 
@@ -71,6 +72,19 @@ func _ready():
 	
 
 func _input(event):
+	
+	#switching camera
+	if Input.is_action_pressed("view"):
+		#activate third person view
+		# Deactivate the currently active camera
+		if camera_3d.current:
+			camera_3d.clear_current()
+		# Activate the new camera
+			camera_third_person.current = true
+			
+		#activate first person view
+		else:
+			camera_3d.current = true
 	
 	# Mouse movement logic
 	
@@ -98,6 +112,7 @@ func _physics_process(delta):
 	# handle movement states
 	
 	var input_dir = Input.get_vector("left", "right", "forward", "backward")
+	
 	
 	
 	

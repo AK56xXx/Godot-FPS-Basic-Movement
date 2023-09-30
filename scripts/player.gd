@@ -12,6 +12,9 @@ var sprinting = false
 var crouching = false
 var free_looking = false
 var sliding = false
+var last_velocity = Vector3.ZERO
+
+
 
 # Slide variables
 var slide_timer = 0.0
@@ -42,6 +45,7 @@ var head_bobbing_current_intensity = 0.0
 
 # Movement variables
 var lerp_speed = 10
+var air_lerp_speed = 3.0
 var jump_velocity = 4.5
 var crouching_depth = -0.5
 var free_look_tilt_amount = 5
@@ -61,6 +65,7 @@ var direction = Vector3.ZERO
 @onready var ray_cast_3d = $RayCast3D
 @onready var camera_3d = $neck/head/eyes/Camera3D
 @onready var camera_third_person = $CameraThirdPerson
+@onready var animation_player = $neck/head/eyes/AnimationPlayer
 
 
 
@@ -71,8 +76,8 @@ func _ready():
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	
 
-func _input(event):
-	
+
+func switch_camera():
 	#switching camera
 	if Input.is_action_pressed("view"):
 		#activate third person view
@@ -85,9 +90,9 @@ func _input(event):
 		#activate first person view
 		else:
 			camera_3d.current = true
-	
-	# Mouse movement logic
-	
+			
+
+func mouse_movement(event):
 	if event is InputEventMouseMotion:
 		# Free looking mode
 		if free_looking:
@@ -104,9 +109,18 @@ func _input(event):
 			head.rotate_x(deg_to_rad(event.relative.y * mouse_sens))
 			#the limit of the rotation up and down to prevent 180° rotation
 			head.rotation.x = clamp(head.rotation.x,deg_to_rad(-90),deg_to_rad(90))
-		
-		
-		
+
+
+func _input(event):
+	
+	#Switch camera fn call
+	switch_camera()
+	
+	# Mouse movement fn call
+	mouse_movement(event)
+	
+
+
 
 func _physics_process(delta):
 	# handle movement states
@@ -162,6 +176,7 @@ func _physics_process(delta):
 			sprinting = true
 			crouching = false
 		else:
+			# Walking
 			current_speed = walking_speed
 			
 			walking = true
@@ -177,10 +192,10 @@ func _physics_process(delta):
 		free_looking = true
 		if sliding:
 			#adding camera tilt when sliding
-			camera_3d.rotation.z = lerp(camera_3d.rotation.z,deg_to_rad(7),delta*lerp_speed)
+			eyes.rotation.z = lerp(camera_3d.rotation.z,deg_to_rad(7),delta*lerp_speed)
 		else:
 			#adding camera tilt when free looking
-			camera_3d.rotation.z = deg_to_rad(neck.rotation.y * free_look_tilt_amount)
+			eyes.rotation.z = deg_to_rad(neck.rotation.y * free_look_tilt_amount)
 	else:
 		free_looking = false
 		#intialise the neck default position after looking around
@@ -188,7 +203,7 @@ func _physics_process(delta):
 		#it works but we need to make it smooth so we will add lerp function and delta time
 		neck.rotation.y = lerp(neck.rotation.y,0.0,delta*lerp_speed)
 		#intialise the camera default position after looking around
-		camera_3d.rotation.z = lerp(camera_3d.rotation.z,0.0,delta*lerp_speed)
+		eyes.rotation.z = lerp(eyes.rotation.z,0.0,delta*lerp_speed)
 	
 	
 	# Handle sliding
@@ -241,31 +256,51 @@ func _physics_process(delta):
 	#ray cast 3d detect the collision to prevent gliches when crouching and jumping
 	if Input.is_action_just_pressed("ui_accept") and is_on_floor() and !ray_cast_3d.is_colliding():
 		velocity.y = jump_velocity
+		animation_player.play("jump")
 		
 		#jump to stop the slide
 		if sliding:
 			sliding = false
 			print("Slide stop")
+	
+	# Handle landing animation
+	
+	if is_on_floor():
+		#roll animation if too high
+		if last_velocity.y < -10.0: 
+			animation_player.play("roll")
+		#normal landing animation from a jump
+		elif last_velocity.y < -5.0:
+			animation_player.play("landing")
+			print(last_velocity.y)
 
 	# Get the input direction and handle the movement/deceleration.
 	
 	#lerp needed for smooth movement
-	direction = lerp(direction,(transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized(),delta * lerp_speed)
+	#Apply the direction movment when only on the floor
+	if is_on_floor():
+		direction = lerp(direction,(transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized(),delta * lerp_speed)
+	#Apply the direction movment and momentum when you jump on the air
+	elif input_dir != Vector2.ZERO:
+		direction = lerp(direction,(transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized(),delta * air_lerp_speed)
 	
 	# Sliding direction
 	if sliding:
 		direction = (transform.basis *  Vector3(slide_vector.x,0,slide_vector.y)).normalized()
-	
+		#sliding duration and speed
+		# value 0.1 to add smooth at the end of the slide 
+		current_speed =  (slide_timer + 0.1 ) * slide_speed
 	if direction:
 		velocity.x = direction.x * current_speed
 		velocity.z = direction.z * current_speed
-		#sliding duration and speed
-		if sliding:
-			# value 0.1 to add smooth at the end of the slide 
-			velocity.x = direction.x * (slide_timer + 0.5 ) * slide_speed
-			velocity.z = direction.z * (slide_timer + 0.5 ) * slide_speed
 	else:
 		velocity.x = move_toward(velocity.x, 0, current_speed)
 		velocity.z = move_toward(velocity.z, 0, current_speed)
+		
+	#last_velocity variable to handle landing
+	#it need to be declared before "move_and_slide()"
+	last_velocity = velocity
 
 	move_and_slide()
+	
+	
